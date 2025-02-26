@@ -31,48 +31,117 @@ async function ensureTable() {
   }
 }
 
-export async function POST(request: Request) {
-  const { prompt } = await request.json()
-
+async function validateHFToken() {
   try {
+    const response = await fetch("https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1", {
+      headers: {
+        Authorization: `Bearer ${process.env.HUGGING_FACE_API_TOKEN}`
+      }
+    });
+    
+    console.log("HF API Token validation status:", response.status);
+    const data = await response.json();
+    console.log("HF API Token validation response:", data);
+    
+    return response.ok;
+  } catch (error) {
+    console.error("HF API Token validation error:", error);
+    return false;
+  }
+}
+
+export async function POST(request: Request) {
+  const startTime = Date.now()
+  
+  try {
+    const { prompt } = await request.json()
+    console.log(`[${new Date().toISOString()}] Получен запрос с prompt:`, prompt)
+    
+    if (!prompt) {
+      return new Response(JSON.stringify({ error: "Prompt is required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
     await ensureTable()
 
-    const imageResponse = await hf.textToImage({
-      inputs: prompt,
-      model: "stabilityai/stable-diffusion-2-1",
-      parameters: {
-        num_inference_steps: 30,
-        guidance_scale: 7.5,
-        width: 768,
-        height: 768,
+    // Прямой запрос к API Hugging Face
+    const response = await fetch("https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.HUGGING_FACE_API_TOKEN}`,
+        "Content-Type": "application/json",
       },
-    })
+      body: JSON.stringify({
+        inputs: prompt,
+        //parameters: {
+        //  num_inference_steps: 20, // Снизьте до 10-15
+        //  guidance_scale: 7.5,
+        //  width: 384, // Число должно быть кратным 64 (384, 512)
+        //  height: 384
+        //}
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("HF API Error:", {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      })
+      throw new Error(`API Error: ${response.status} ${response.statusText}`)
+    }
+
+    const imageBuffer = await response.arrayBuffer()
+    
+    if (!imageBuffer || imageBuffer.byteLength === 0) {
+      throw new Error("Empty image response")
+    }
 
     const fileName = `generated-${Date.now()}.png`
-    
+
     // Сохраняем локально только в режиме разработки
     if (IS_LOCAL) {
       const filePath = join(GENERATIONS_DIR, fileName)
-      await writeFile(filePath, Buffer.from(await imageResponse.arrayBuffer()))
+      await writeFile(filePath, Buffer.from(imageBuffer))
       console.log(`Файл сохранен локально: ${filePath}`)
     }
 
-    // Всегда сохраняем в Vercel Blob
-    const blob = new Blob([imageResponse])
+    // Сохраняем в Vercel Blob
+    const blob = new Blob([imageBuffer], { type: 'image/png' })
     const { url } = await put(fileName, blob, {
       access: "public",
     })
-    console.log(`Файл сохранен в Vercel Blob: ${url}`)
 
+    console.log("Изображение сохранено в Blob:", url)
+
+    // Сохраняем в базу данных
     await db.query(
       'INSERT INTO banita (prompt, image_url) VALUES ($1, $2)',
       [prompt, url]
     )
 
-    return new Response(imageResponse)
+    const executionTime = Date.now() - startTime
+    console.log(`Генерация завершена за ${executionTime}ms`)
+
+    return new Response(JSON.stringify({ 
+      url,
+      executionTime 
+    }), {
+      headers: { "Content-Type": "application/json" },
+    })
+
   } catch (error) {
-    console.error("Error generating image:", error)
-    return new Response(JSON.stringify({ error: "Failed to generate image" }), {
+    const errorTime = Date.now() - startTime
+    console.error(`[${new Date().toISOString()}] Ошибка после ${errorTime}ms:`, error)
+    
+    return new Response(JSON.stringify({ 
+      error: "Failed to generate image", 
+      details: error instanceof Error ? error.message : "Unknown error",
+      executionTime: errorTime
+    }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     })
