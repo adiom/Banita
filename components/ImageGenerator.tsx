@@ -7,6 +7,10 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from 'sonner'
 
+const IS_LOCAL = process.env.NEXT_PUBLIC_VERCEL_ENV === undefined || 
+                process.env.NEXT_PUBLIC_VERCEL_ENV === 'development'
+
+
 interface Generation {
   id: number
   prompt: string
@@ -146,21 +150,46 @@ export default function ImageGenerator() {
           </div>
         </ScrollArea>
 
-        <div className="border-t bg-card p-4">
-          <form onSubmit={handleSubmit} className="flex gap-4">
-            <Input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Опишите изображение, которое хотите создать..."
-              className="flex-1"
-              disabled={isLoading}
-            />
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? `${elapsedTime}мс` : "Создать"}
-            </Button>
-          </form>
-        </div>
+        {IS_LOCAL ? (
+  // Форма для локальной версии
+  <div className="border-t bg-card p-4">
+    <form onSubmit={handleSubmit} className="flex gap-4">
+      <Input
+        type="text"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        placeholder="Опишите изображение, которое хотите создать..."
+        className="flex-1"
+        disabled={isLoading}
+      />
+      <Button type="submit" disabled={isLoading}>
+        {isLoading ? `${elapsedTime}мс` : "Создать"}
+      </Button>
+    </form>
+  </div>
+) : (
+  // Кнопка покупки для Vercel версии
+  <div className="border-t bg-card p-4">
+    <div className="flex flex-col items-center gap-4">
+      <Button 
+        asChild
+        className="w-full max-w-md bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+      >
+        <a
+          href="https://canfly.org/i/banita"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-lg font-semibold"
+        >
+          КУПИТЬ ДОСТУП
+        </a>
+      </Button>
+      <p className="text-sm text-muted-foreground">
+        Генерация изображений доступна только для пользователей с полным доступом
+      </p>
+    </div>
+  </div>
+)}
       </div>
     </div>
   )
