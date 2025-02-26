@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { Toaster } from 'sonner'
+
 
 export const metadata: Metadata = {
   title: 'Canfly Banita',
@@ -14,8 +16,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body>
         {children}
+        <Toaster position="bottom-left" expand={true} richColors />
       </body>
     </html>
   )

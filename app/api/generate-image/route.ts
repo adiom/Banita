@@ -85,13 +85,13 @@ export async function POST(request: Request) {
     });
 
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error("HF API Error:", {
+      const errorData = await response.json()
+      throw new Error(JSON.stringify({
         status: response.status,
         statusText: response.statusText,
-        body: errorText
-      })
-      throw new Error(`API Error: ${response.status} ${response.statusText}`)
+        message: errorData.error,
+        warnings: errorData.warnings || []
+      }))
     }
 
     const imageBuffer = await response.arrayBuffer()
